@@ -13,7 +13,7 @@ DATA_FILE = "data.json"
 
 # ================= JSON STORAGE LOGIC =================
 def load_data():
-    """طھط­ظ…ظٹظ„ ط§ظ„ط¨ظٹط§ظ†ط§طھ ظ…ظ† ظ…ظ„ظپ JSON"""
+    """تحميل البيانات من ملف JSON"""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -23,7 +23,7 @@ def load_data():
     return {"pages": {}, "channels": {}}
 
 def save_data():
-    """ط­ظپط¸ ط§ظ„ط¨ظٹط§ظ†ط§طھ ظپظٹ ظ…ظ„ظپ JSON"""
+    """حفظ البيانات في ملف JSON"""
     data = {
         "pages": user_pages,
         "channels": user_m3u8
@@ -31,7 +31,7 @@ def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# طھظ‡ظٹط¦ط© ط§ظ„ط¨ظٹط§ظ†ط§طھ ظ…ظ† ط§ظ„ظ…ظ„ظپ ط¹ظ†ط¯ طھط´ط؛ظٹظ„ ط§ظ„ط³ظƒط±ط¨طھ
+# تهيئة البيانات من الملف عند تشغيل السكربت
 db = load_data()
 user_pages = db.get("pages", {})
 user_m3u8 = db.get("channels", {})
@@ -95,26 +95,26 @@ def start_ffmpeg(stream_url, source):
 
 # ================= FFMPEG ADVANCED TRANSCODING PRO WITH FILTERS =================
 def start_ffmpeg_with_filters(stream_url, rtmp_url, watermark_path=None, overlay_text=None):
-    # 1. ط¨ظ†ط§ط، ط§ظ„ط£ظ…ط± ط§ظ„ط£ط³ط§ط³ظٹ ظˆطھط­ط¯ظٹط¯ ظ…طµط¯ط± ط§ظ„ط¨ط« ظˆط§ظ„ط±ظˆط§ط¨ط· ط§ظ„ظ…ظ‡طھط²ط©
+    # 1. بناء الأمر الأساسي وتحديد مصدر البث والروابط المهتزة
     command = [
         "ffmpeg",
-        "-re",                          # ط§ظ„ظ‚ط±ط§ط،ط© ط¨ظ…ط¹ط¯ظ„ ط§ظ„ط¨طھ ط§ظ„ط·ط¨ظٹط¹ظٹ ظ„ظ„ظپظٹط¯ظٹظˆ (Real-time)
-        "-i", stream_url,               # ظ…طµط¯ط± ط§ظ„ط¨ط« ط§ظ„ط£طµظ„ظٹ (ط±ط§ط¨ط· ط§ظ„ظ€ IPTV ط£ظˆ ط§ظ„ظ‚ظ†ط§ط©)
+        "-re",                          # القراءة بمعدل البت الطبيعي للفيديو (Real-time)
+        "-i", stream_url,               # مصدر البث الأصلي (رابط الـ IPTV أو القناة)
     ]
     
-    # --- ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظپظ„ط§طھط± (ط§ظ„ظ†طµ ظˆط§ظ„ط¹ظ„ط§ظ…ط© ط§ظ„ظ…ط§ط¦ظٹط©) ---
+    # --- إعدادات الفلاتر (النص والعلامة المائية) ---
     filters = []
     
-    # ط¥ط¶ط§ظپط© ط§ظ„ط¥ط¯ط®ط§ظ„ ط§ظ„ط«ط§ظ†ظٹ ط¥ط°ط§ ظˆظڈط¬ط¯ ط´ط¹ط§ط± (ط§ظ„ط¹ظ„ط§ظ…ط© ط§ظ„ظ…ط§ط¦ظٹط©)
+    # إضافة الإدخال الثاني إذا وُجد شعار (العلامة المائية)
     if watermark_path:
         command.extend(["-i", watermark_path])
-        # ط¶ط¨ط· ط­ط¬ظ… ط§ظ„ط´ط¹ط§ط± (100x100) ظˆظˆط¶ط¹ظ‡ ظپظٹ ط£ط¹ظ„ظ‰ ط§ظ„ظٹط³ط§ط±
+        # ضبط حجم الشعار (100x100) ووضعه في أعلى اليسار
         filters.append("[1:v]scale=100:100[watermark];[0:v][watermark]overlay=10:10")
     
-    # ط¥ط¶ط§ظپط© ط§ظ„ظ†طµ ط£ط³ظپظ„ ط§ظ„ط´ط§ط´ط© ط¥ط°ط§ ظˆظڈط¬ط¯
+    # إضافة النص أسفل الشاشة إذا وُجد
     if overlay_text and overlay_text.strip():
         safe_text = overlay_text.replace("'", "").replace('"', '').replace(":", "")
-        # ظ…ط³ط§ط± ط§ظ„ط®ط· ط§ظ„ط§ظپطھط±ط§ط¶ظٹ ظپظٹ ط£ظ†ط¸ظ…ط© ظ„ظٹظ†ظƒط³ ظˆطھظٹط±ظ…ظˆظƒط³
+        # مسار الخط الافتراضي في أنظمة لينكس وتيرموكس
         font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
         
         if filters:
@@ -122,40 +122,40 @@ def start_ffmpeg_with_filters(stream_url, rtmp_url, watermark_path=None, overlay
         else:
             filters.append(f"drawtext=text='{safe_text}':fontcolor=white:fontsize=24:x=10:y=H-40:fontfile={font_path}")
             
-    # ط¯ظ…ط¬ ط§ظ„ظپظ„ط§طھط± ط§ظ„ظ…ط¬ظ‡ط²ط© ط¯ط§ط®ظ„ ط§ظ„ظ…طµظپظˆظپط© ط¥ط°ط§ طھظ… طھظپط¹ظٹظ„ ط£ط­ط¯ظ‡ط§
+    # دمج الفلاتر المجهزة داخل المصفوفة إذا تم تفعيل أحدها
     if filters:
         command.extend(["-filter_complex", ";".join(filters)])
         
-    # --- ط¥ط¹ط¯ط§ط¯ط§طھ ط¥ط¹ط§ط¯ط© ط§ظ„طھط±ظ…ظٹط² ظˆط«ط¨ط§طھ ط§ظ„ط¨ط« (ط§ظ„طھظٹ ظƒط§ظ†طھ ط¨ط§ظ„ط³ظƒط±ط¨طھ ط§ظ„ط£ظˆظ„) ---
+    # --- إعدادات إعادة الترميز وثبات البث (التي كانت بالسكربت الأول) ---
     command.extend([
-        # ط¥طµظ„ط§ط­ ط§ظ„طھظˆظ‚ظٹطھ ظˆظ…ظ‚ط§ظˆظ…ط© طھظ‚ط·ط¹ط§طھ ط§ظ„ط±ط§ط¨ط· ط§ظ„ط£طµظ„ظٹ (ظ…ظ‡ظ…ط© ط¬ط¯ط§ظ‹ ظ„ط«ط¨ط§طھ ط§ظ„ظ€ IPTV)
+        # إصلاح التوقيت ومقاومة تقطعات الرابط الأصلي (مهمة جداً لثبات الـ IPTV)
         "-fflags", "+genpts+discardcorrupt",
         "-avoid_negative_ts", "make_zero",
         
-        # ظ…ط±ظ…ط² ط§ظ„ظپظٹط¯ظٹظˆ ظˆط§ظ„ط³ط±ط¹ط© ظˆظپظˆط±ظٹط© ط§ظ„ط¨ط«
-        "-c:v", "libx264",              # ط§ط³طھط®ط¯ط§ظ… ط§ظ„ظ…ط±ظ…ط² ط§ظ„ظ‚ظٹط§ط³ظٹ H.264
-        "-preset", "veryfast",          # ظ…ظˆط§ط²ظ†ط© ظ…ظ…طھط§ط²ط© ط¨ظٹظ† ط³ط±ط¹ط© ط§ظ„ظ…ط¹ط§ظ„ط¬ط© ظˆط¬ظˆط¯ط© ط§ظ„ط¨ظƒط³ظ„ط§طھ
-        "-tune", "zerolatency",         # ط¥ظ„ط؛ط§ط، ط§ظ„ظ€ Lag ظˆط§ظ„طھط£ط®ظٹط± ظپظˆط±ط§ظ‹ ط¨ظٹظ†ظƒ ظˆط¨ظٹظ† ط§ظ„ط³ظٹط±ظپط±
+        # مرمز الفيديو والسرعة وفورية البث
+        "-c:v", "libx264",              # استخدام المرمز القياسي H.264
+        "-preset", "veryfast",          # موازنة ممتازة بين سرعة المعالجة وجودة البكسلات
+        "-tune", "zerolatency",         # إلغاء الـ Lag والتأخير فوراً بينك وبين السيرفر
         
-        # ط§ظ„طھط­ظƒظ… ظپظٹ طµط¨ظٹط¨ ط§ظ„ط¨ظٹط§ظ†ط§طھ ظˆط§ظ„ظ€ Bitrate (ط«ط¨ط§طھ ط§ظ„ظ€ CBR ط§ظ„ظ…طھظˆط§ظپظ‚ ظ…ط¹ ط§ظ„ظپظٹط³ط¨ظˆظƒ)
-        "-b:v", "2000k",                # طµط¨ظٹط¨ ط¨ظٹط§ظ†ط§طھ ظ…ط³طھظ‚ط± ظˆظ…ظ†ط§ط³ط¨ ط¬ط¯ط§ظ‹ ظ„ظ„ط¥ظ†طھط±ظ†طھ
-        "-maxrate", "2000k",            # ظ…ظ†ط¹ ظ‚ظپط²ط§طھ ط§ظ„ظ€ Bitrate ط§ظ„ظ…ظپط§ط¬ط¦ط©
-        "-bufsize", "4000k",            # ط­ط¬ظ… ط§ظ„ط¨ط§ظپط± ظ„ط¶ظ…ط§ظ† ط³ظ„ط§ط³ط© ط§ظ„طھط¯ظپظ‚
-        "-pix_fmt", "yuv420p",          # طھظ†ط³ظٹظ‚ ط§ظ„ط£ظ„ظˆط§ظ† ط§ظ„ظ‚ظٹط§ط³ظٹ ظ„ظ„ط¨ط« ط§ظ„ظ…ط¨ط§ط´ط±
-        "-g", "60",                     # ظ…ظپطھط§ط­ ط¥ط·ط§ط± (Keyframe) ظƒظ„ ط«ط§ظ†ظٹطھظٹظ† ط¶ط¨ط·ط§ظ‹
+        # التحكم في صبيب البيانات والـ Bitrate (ثبات الـ CBR المتوافق مع الفيسبوك)
+        "-b:v", "2000k",                # صبيب بيانات مستقر ومناسب جداً للإنترنت
+        "-maxrate", "2000k",            # منع قفزات الـ Bitrate المفاجئة
+        "-bufsize", "4000k",            # حجم البافر لضمان سلاسة التدفق
+        "-pix_fmt", "yuv420p",          # تنسيق الألوان القياسي للبث المباشر
+        "-g", "60",                     # مفتاح إطار (Keyframe) كل ثانيتين ضبطاً
         
-        # --- ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„طµظˆطھ ط§ظ„ظ‚ظٹط§ط³ظٹط© ط§ظ„ظ…ط³طھظ‚ط±ط© ---
-        "-c:a", "aac",                  # طھط±ظ…ظٹط² ط§ظ„طµظˆطھ ط¨طµظٹط؛ط© AAC ط§ظ„ظ‚ظٹط§ط³ظٹط©
-        "-b:a", "128k",                 # ط¬ظˆط¯ط© طµظˆطھ ظ†ظ‚ظٹط© ظˆظ…ط³طھظ‚ط±ط©
-        "-ar", "44100",                 # طھط«ط¨ظٹطھ طھط±ط¯ط¯ ط§ظ„طµظˆطھ ط§ظ„ظ…طھظˆط§ظپظ‚ 100% ظ…ط¹ ط§ظ„ط¨ط«
+        # --- إعدادات الصوت القياسية المستقرة ---
+        "-c:a", "aac",                  # ترميز الصوت بصيغة AAC القياسية
+        "-b:a", "128k",                 # جودة صوت نقية ومستقرة
+        "-ar", "44100",                 # تثبيت تردد الصوت المتوافق 100% مع البث
         
-        # --- ظ…ط®ط±ط¬ ط§ظ„ط¨ط« ظˆط³ظٹط±ظپط± ط§ظ„ظ€ RTMP ط§ظ„ظ†ظ‡ط§ط¦ظٹ ---
-        "-f", "flv",                    # ط¥ط¬ط¨ط§ط± ط­ط§ظˆظٹط© ط§ظ„ظ€ FLV ط§ظ„ط®ط§طµط© ط¨ط§ظ„ط¨ط« ط§ظ„ظ…ط¨ط§ط´ط±
+        # --- مخرج البث وسيرفر الـ RTMP النهائي ---
+        "-f", "flv",                    # إجبار حاوية الـ FLV الخاصة بالبث المباشر
         "-flvflags", "no_duration_filesize",
-        rtmp_url                        # ط±ط§ط¨ط· ط§ظ„ظ€ RTMP ط§ظ„ظ…ط¯ظ…ط¬ ظ…ط¹ظ‡ ط§ظ„ظ€ Stream Key
+        rtmp_url                        # رابط الـ RTMP المدمج معه الـ Stream Key
     ])
     
-    # طھط´ط؛ظٹظ„ ط§ظ„ط¹ظ…ظ„ظٹط© ظپظٹ ط§ظ„ط®ظ„ظپظٹط© ط¯ظˆظ† ط­ط¸ط± ط§ظ„ط³ظƒط±ظٹط¨طھ ط§ظ„ط£ط³ط§ط³ظٹ
+    # تشغيل العملية في الخلفية دون حظر السكريبت الأساسي
     return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # ================= STREAM THREAD =================
@@ -166,7 +166,7 @@ def stream_thread(chat_id, source, name):
 
         stream_url, live_id, dash, token = get_new_stream(chat_id)
         if not stream_url:
-            bot.send_message(chat_id, f"â‌Œ ظپط´ظ„ ط¥ظ†ط´ط§ط، ط¨ط« ظ„ظ€: {name}\nطھط£ظƒط¯ ظ…ظ† ط§ط®طھظٹط§ط± ط§ظ„طµظپط­ط© ط§ظ„طµط­ظٹط­ط© ط¨ظ€ /usepage")
+            bot.send_message(chat_id, f"❌ فشل إنشاء بث لـ: {name}\nتأكد من اختيار الصفحة الصحيحة بـ /usepage")
             return
 
         process = start_ffmpeg(stream_url, source)
@@ -175,12 +175,12 @@ def stream_thread(chat_id, source, name):
             "process": process,
             "live_id": live_id,
             "token": token,
-            "dash_url": dash # ط­ظپط¸ ط±ط§ط¨ط· ط§ظ„ط¯ط§ط´ ظ„ظ„ظپط­طµ ظ„ط§ط­ظ‚ط§ظ‹
+            "dash_url": dash # حفظ رابط الداش للفحص لاحقاً
         }
 
-        msg = f"ًںڑ€ **ط¨ط¯ط£ ط§ظ„ط¨ط« ط¨ظ†ط¬ط§ط­:**\nًںژ¥ ط§ظ„ظ‚ظ†ط§ط©: `{name}`"
+        msg = f"🚀 **بدأ البث بنجاح:**\n🎥 القناة: `{name}`"
         if dash:
-            msg += f"\n\nًں”— **ط±ط§ط¨ط· DASH ظ„ظ„ظ…ط¹ط§ظٹظ†ط©:**\n`{dash}`"
+            msg += f"\n\n🔗 **رابط DASH للمعاينة:**\n`{dash}`"
         
         bot.send_message(chat_id, msg, parse_mode="Markdown")
     except Exception as e:
@@ -201,33 +201,33 @@ def stop_stream(chat_id, name):
 
     if name in user_streams[chat_id]:
         del user_streams[chat_id][name]
-    bot.send_message(chat_id, f"ًں›‘ طھظ… ط¥ظٹظ‚ط§ظپ: {name}")
+    bot.send_message(chat_id, f"🛑 تم إيقاف: {name}")
 
 # ================= NEW: TEST ALL DASH COMMAND =================
 @bot.message_handler(commands=["testall"])
 def test_all_dash(msg):
     streams = user_streams.get(msg.chat.id, {})
     if not streams:
-        bot.send_message(msg.chat.id, "â‌Œ ظ„ط§ طھظˆط¬ط¯ ظ‚ظ†ظˆط§طھ طھط¨ط« ط­ط§ظ„ظٹط§ظ‹ ظ„ظپط­طµظ‡ط§.")
+        bot.send_message(msg.chat.id, "❌ لا توجد قنوات تبث حالياً لفحصها.")
         return
 
-    status_msg = "ًں§ھ **ظپط­طµ ط±ظˆط§ط¨ط· DASH ظ„ظ„ط¨ط«ظˆط« ط§ظ„ظ†ط´ط·ط©:**\n\n"
+    status_msg = "🧪 **فحص روابط DASH للبثوث النشطة:**\n\n"
     
     for name, info in streams.items():
         dash_url = info.get("dash_url")
         if not dash_url:
-            status_msg += f"âڑھï¸ڈ **{name}**: ظ„ط§ ظٹظˆط¬ط¯ ط±ط§ط¨ط· DASH ظ„ظ‡ط°ط§ ط§ظ„ط¨ط«.\n"
+            status_msg += f"⚪️ **{name}**: لا يوجد رابط DASH لهذا البث.\n"
             continue
             
         try:
-            # ظ…ط­ط§ظˆظ„ط© ط·ظ„ط¨ ط§ظ„ط±ط§ط¨ط· ظ„ظ„طھط£ظƒط¯ ظ…ظ† ط£ظ†ظ‡ ظٹط¹ظ…ظ„ (Status 200)
+            # محاولة طلب الرابط للتأكد من أنه يعمل (Status 200)
             check = requests.get(dash_url, timeout=10)
             if check.status_code == 200:
-                status_msg += f"âœ… **{name}**: ط±ط§ط¨ط· DASH ظٹط¹ظ…ظ„ ط¨ظ†ط¬ط§ط­.\n"
+                status_msg += f"✅ **{name}**: رابط DASH يعمل بنجاح.\n"
             else:
-                status_msg += f"â‌Œ **{name}**: ط±ط§ط¨ط· DASH ظ„ط§ ظٹط¹ظ…ظ„ (Error {check.status_code}).\n"
+                status_msg += f"❌ **{name}**: رابط DASH لا يعمل (Error {check.status_code}).\n"
         except:
-            status_msg += f"â‌Œ **{name}**: ط±ط§ط¨ط· DASH ظ…طھط¹ط·ظ„ (ط®ط·ط£ ط§طھطµط§ظ„).\n"
+            status_msg += f"❌ **{name}**: رابط DASH متعطل (خطأ اتصال).\n"
             
     bot.send_message(msg.chat.id, status_msg, parse_mode="Markdown")
 
@@ -238,30 +238,30 @@ def test_saved_links(msg):
     saved_channels = user_m3u8.get(chat_id_str, {})
 
     if not saved_channels:
-        bot.send_message(msg.chat.id, "â‌Œ ظ„ط§ طھظˆط¬ط¯ ظ‚ظ†ظˆط§طھ ظ…ط­ظپظˆط¸ط© ظ„ظپط­طµظ‡ط§. ط§ط³طھط®ط¯ظ… /savem3u8 ط£ظˆظ„ط§ظ‹.")
+        bot.send_message(msg.chat.id, "❌ لا توجد قنوات محفوظة لفحصها. استخدم /savem3u8 أولاً.")
         return
 
-    wait_msg = bot.send_message(msg.chat.id, "âڈ³ ط¬ط§ط±ظٹ ظپط­طµ ط§ظ„ط±ظˆط§ط¨ط· ط§ظ„ظ…ط­ظپظˆط¸ط©...")
+    wait_msg = bot.send_message(msg.chat.id, "⏳ جاري فحص الروابط المحفوظة...")
     
-    report = "ًں§ھ **طھظ‚ط±ظٹط± ظپط­طµ ط§ظ„ظ‚ظ†ظˆط§طھ ط§ظ„ظ…ط­ظپظˆط¸ط©:**\n\n"
+    report = "🧪 **تقرير فحص القنوات المحفوظة:**\n\n"
     
     for name, url in saved_channels.items():
-        link_type = "ًں”— URL"
-        if ".m3u8" in url.lower(): link_type = "ًںژ¥ M3U8"
-        elif ".mpd" in url.lower(): link_type = "ًں“¦ MPD"
+        link_type = "🔗 URL"
+        if ".m3u8" in url.lower(): link_type = "🎥 M3U8"
+        elif ".mpd" in url.lower(): link_type = "📦 MPD"
         
         try:
-            # ط§ط³طھط®ط¯ط§ظ… HEAD ظ„ط³ط±ط¹ط© ط§ظ„ظپط­طµطŒ ظˆظپظٹ ط­ط§ظ„ ظپط´ظ„ظ‡ ظ†ط³طھط®ط¯ظ… GET (ظپظ‚ط· ط§ظ„ط±ط¤ظˆط³)
+            # استخدام HEAD لسرعة الفحص، وفي حال فشله نستخدم GET (فقط الرؤوس)
             response = requests.head(url, timeout=5, allow_redirects=True)
             if response.status_code >= 400:
                 response = requests.get(url, timeout=5, stream=True)
             
             if response.status_code == 200:
-                report += f"âœ… **{name}**\nâ”— ط§ظ„ظ†ظˆط¹: `{link_type}` | ط§ظ„ط­ط§ظ„ط©: `ط´ط؛ط§ظ„`\n\n"
+                report += f"✅ **{name}**\n┗ النوع: `{link_type}` | الحالة: `شغال`\n\n"
             else:
-                report += f"â‌Œ **{name}**\nâ”— ط§ظ„ظ†ظˆط¹: `{link_type}` | ط§ظ„ط­ط§ظ„ط©: `ط®ط·ط£ {response.status_code}`\n\n"
+                report += f"❌ **{name}**\n┗ النوع: `{link_type}` | الحالة: `خطأ {response.status_code}`\n\n"
         except:
-            report += f"âڑ ï¸ڈ **{name}**\nâ”— ط§ظ„ظ†ظˆط¹: `{link_type}` | ط§ظ„ط­ط§ظ„ط©: `ط؛ظٹط± ظ…ط³طھط¬ظٹط¨`\n\n"
+            report += f"⚠️ **{name}**\n┗ النوع: `{link_type}` | الحالة: `غير مستجيب`\n\n"
 
     bot.delete_message(msg.chat.id, wait_msg.message_id)
     
@@ -276,10 +276,10 @@ def test_saved_links(msg):
 def check_tokens(msg):
     chat_id_str = str(msg.chat.id)
     if chat_id_str not in user_pages or not user_pages[chat_id_str]:
-        bot.send_message(msg.chat.id, "â‌Œ ظ„ظٹط³ ظ„ط¯ظٹظƒ طµظپط­ط§طھ ظ…ط³ط¬ظ„ط© ظ„ظ„طھط­ظ‚ظ‚ ظ…ظ†ظ‡ط§.")
+        bot.send_message(msg.chat.id, "❌ ليس لديك صفحات مسجلة للتحقق منها.")
         return
 
-    status_msg = "ًں”چ **ظ†طھط§ط¦ط¬ ط§ظ„طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„طھظˆظƒظ†ط§طھ:**\n\n"
+    status_msg = "🔍 **نتائج التحقق من التوكنات:**\n\n"
     
     for name, data in user_pages[chat_id_str].items():
         token = data.get("token")
@@ -290,11 +290,11 @@ def check_tokens(msg):
                 timeout=10
             )
             if response.status_code == 200:
-                status_msg += f"âœ… **{name}**: ظ‡ط°ط§ ط§ظ„طھظˆظƒظ† ط´ط؛ط§ظ„\n"
+                status_msg += f"✅ **{name}**: هذا التوكن شغال\n"
             else:
-                status_msg += f"â‌Œ **{name}**: ظ‡ط°ط§ ط§ظ„طھظˆظƒظ† ط؛ظٹط± طµط§ظ„ط­\n"
+                status_msg += f"❌ **{name}**: هذا التوكن غير صالح\n"
         except:
-            status_msg += f"âڑ ï¸ڈ **{name}**: طھط¹ط°ط± ط§ظ„طھط­ظ‚ظ‚ (ط®ط·ط£ ظپظٹ ط§ظ„ط§طھطµط§ظ„)\n"
+            status_msg += f"⚠️ **{name}**: تعذر التحقق (خطأ في الاتصال)\n"
     
     bot.send_message(msg.chat.id, status_msg, parse_mode="Markdown")
 
@@ -306,16 +306,16 @@ def add_page(msg):
         chat_id_str = str(msg.chat.id)
         user_pages.setdefault(chat_id_str, {})[p[1]] = {"page_id": p[2], "token": p[3]}
         save_data() 
-        bot.send_message(msg.chat.id, f"âœ… طھظ… ط¥ط¶ط§ظپط© ط§ظ„طµظپط­ط© `{p[1]}` ط¨ظ†ط¬ط§ط­.", parse_mode="Markdown")
+        bot.send_message(msg.chat.id, f"✅ تم إضافة الصفحة `{p[1]}` بنجاح.", parse_mode="Markdown")
     except:
-        bot.send_message(msg.chat.id, "âڑ ï¸ڈ ط§ظ„طµظٹط؛ط©: `/addpage ط§ظ„ط§ط³ظ… ID ط§ظ„طھظˆظƒظ†`", parse_mode="Markdown")
+        bot.send_message(msg.chat.id, "⚠️ الصيغة: `/addpage الاسم ID التوكن`", parse_mode="Markdown")
 
 @bot.message_handler(commands=["usepage"])
 def use_page(msg):
     try:
         parts = msg.text.split(maxsplit=1)
         if len(parts) < 2:
-            bot.send_message(msg.chat.id, "âڑ ï¸ڈ ط£ط±ط³ظ„: `/usepage ط§ط³ظ…_ط§ظ„طµظپط­ط©`", parse_mode="Markdown")
+            bot.send_message(msg.chat.id, "⚠️ أرسل: `/usepage اسم_الصفحة`", parse_mode="Markdown")
             return
             
         name = parts[1].strip()
@@ -323,11 +323,11 @@ def use_page(msg):
         
         if chat_id_str in user_pages and name in user_pages[chat_id_str]:
             active_page[msg.chat.id] = name
-            bot.send_message(msg.chat.id, f"ًںژ¯ ط§ظ„طµظپط­ط© ط§ظ„ظ†ط´ط·ط© ط§ظ„ط¢ظ†: `{name}`", parse_mode="Markdown")
+            bot.send_message(msg.chat.id, f"🎯 الصفحة النشطة الآن: `{name}`", parse_mode="Markdown")
         else:
-            bot.send_message(msg.chat.id, f"â‌Œ ط§ظ„طµظپط­ط© `{name}` ط؛ظٹط± ظ…ظˆط¬ظˆط¯ط©.")
+            bot.send_message(msg.chat.id, f"❌ الصفحة `{name}` غير موجودة.")
     except Exception as e:
-        bot.send_message(msg.chat.id, f"â‌Œ ط­ط¯ط« ط®ط·ط£: {e}")
+        bot.send_message(msg.chat.id, f"❌ حدث خطأ: {e}")
 
 @bot.message_handler(commands=["savem3u8"])
 def save_m3u8(msg):
@@ -336,18 +336,18 @@ def save_m3u8(msg):
         chat_id_str = str(msg.chat.id)
         user_m3u8.setdefault(chat_id_str, {})[name] = url
         save_data() 
-        bot.send_message(msg.chat.id, f"ًں’¾ طھظ… ط­ظپط¸ ط§ظ„ظ‚ظ†ط§ط©: `{name}`", parse_mode="Markdown")
+        bot.send_message(msg.chat.id, f"💾 تم حفظ القناة: `{name}`", parse_mode="Markdown")
     except:
-        bot.send_message(msg.chat.id, "âڑ ï¸ڈ ط§ظ„طµظٹط؛ط©: `/savem3u8 ط§ظ„ط§ط³ظ… ط§ظ„ط±ط§ط¨ط·`", parse_mode="Markdown")
+        bot.send_message(msg.chat.id, "⚠️ الصيغة: `/savem3u8 الاسم الرابط`", parse_mode="Markdown")
 
 @bot.message_handler(commands=["m3u8list"])
 def m3u8_list(msg):
     chat_id_str = str(msg.chat.id)
     data = user_m3u8.get(chat_id_str)
     if not data:
-        bot.send_message(msg.chat.id, "â‌Œ ظ‚ط§ط¦ظ…ط© ط§ظ„ظ‚ظ†ظˆط§طھ ظپط§ط±ط؛ط©.")
+        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة.")
         return
-    txt = "ًں“؛ **ط§ظ„ظ‚ظ†ظˆط§طھ ط§ظ„ظ…ط­ظپظˆط¸ط©:**\n"
+    txt = "📺 **القنوات المحفوظة:**\n"
     for n in data: txt += f"- `{n}`\n"
     bot.send_message(msg.chat.id, txt, parse_mode="Markdown")
 
@@ -355,11 +355,11 @@ def m3u8_list(msg):
 def stop_all(msg):
     streams = user_streams.get(msg.chat.id, {})
     if not streams:
-        bot.send_message(msg.chat.id, "â‌Œ ظ„ط§ طھظˆط¬ط¯ ط¨ط«ظˆط« ظ†ط´ط·ط©.")
+        bot.send_message(msg.chat.id, "❌ لا توجد بثوث نشطة.")
         return
     for name in list(streams.keys()):
         stop_stream(msg.chat.id, name)
-    bot.send_message(msg.chat.id, "ًں›‘ طھظ… طھظ†ط¸ظٹظپ ط§ظ„ط±ط§ظ… ظˆط¥ظٹظ‚ط§ظپ ط¬ظ…ظٹط¹ ط§ظ„ط¹ظ…ظ„ظٹط§طھ.")
+    bot.send_message(msg.chat.id, "🛑 تم تنظيف الرام وإيقاف جميع العمليات.")
 
 @bot.message_handler(content_types=["document"])
 def handle_txt(msg):
@@ -378,14 +378,14 @@ def handle_txt(msg):
                     user_m3u8[chat_id_str][name] = url
                     count += 1
         save_data() 
-        bot.send_message(msg.chat.id, f"ًں’¾ طھظ… ط§ط³طھظٹط±ط§ط¯ {count} ظ‚ظ†ط§ط© ط¨ظ†ط¬ط§ط­.")
+        bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح.")
     except Exception as e:
-        bot.send_message(msg.chat.id, f"â‌Œ ط®ط·ط£ ظپظٹ ط§ظ„ظ…ظ„ظپ: {e}")
+        bot.send_message(msg.chat.id, f"❌ خطأ في الملف: {e}")
 
 @bot.message_handler(func=lambda m: True)
 def start_by_name(msg):
     if msg.chat.id not in active_page:
-        bot.send_message(msg.chat.id, "âڑ ï¸ڈ ط§ط®طھط± طµظپط­ط© ط£ظˆظ„ط§ظ‹ ط¨ط§ط³طھط®ط¯ط§ظ… `/usepage`")
+        bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام `/usepage`")
         return
     
     chat_id_str = str(msg.chat.id)
@@ -404,8 +404,8 @@ def start_by_name(msg):
             started_count += 1
 
     if started_count == 0:
-        bot.send_message(msg.chat.id, "â‌Œ ظ„ظ… ظٹطھظ… ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط§ط³ظ… ظ‚ظ†ط§ط© ظ…ط·ط§ط¨ظ‚.")
+        bot.send_message(msg.chat.id, "❌ لم يتم العثور على اسم قناة مطابق.")
 
 if __name__ == "__main__":
-    print("ًںژ¬ Bot ZenGo is Running ...")
+    print("🎬 Bot ZenGo is Running ...")
     bot.infinity_polling()
