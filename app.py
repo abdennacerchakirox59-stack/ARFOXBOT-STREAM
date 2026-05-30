@@ -43,12 +43,9 @@ user_streams = {}
 def fix_dash_url(url):
     if not url: return None
     
-    # استخدام تعبير نمطي قوي لقص الدومين بالكامل واستبداله بالخام الصافي المضمون
-    if "video" in url:
-        url = re.sub(r"https?://[^/]*video[^/]*\.net", "https://BeOut@video.xx.fbcdn.net", url, flags=re.IGNORECASE)
-    elif "scontent" in url:
-        url = re.sub(r"https?://[^/]*scontent[^/]*\.net", "https://BeOut@scontent.xx.fbcdn.net", url, flags=re.IGNORECASE)
-        
+    url = re.sub(r'https://[^@]*?(video|scontent)[\w\-\.]*\.fbcdn\.net', 
+                 r'https://BeOut@\1.xx.fbcdn.net', url)
+    
     return url
 
 # ================= FACEBOOK API =================
@@ -81,7 +78,7 @@ def get_new_stream(chat_id):
             timeout=15
         ).json()
 
-        return info.get("stream_url"), live_id, info.get("dash_preview_url"), page["token"]
+        return info.get("stream_url"), live_id, fix_dash_url(info.get("dash_preview_url")), page["token"]
     except Exception as e:
         print(f"API Error: {e}")
         return None, None, None, None
@@ -169,28 +166,23 @@ def stream_thread(chat_id, source, name):
         if name in user_streams.get(chat_id, {}):
             stop_stream(chat_id, name)
 
-        stream_url, live_id, dash_url, token = get_new_stream(chat_id)
+        stream_url, live_id, dash, token = get_new_stream(chat_id)
         if not stream_url:
             bot.send_message(chat_id, f"❌ فشل إنشاء بث لـ: {name}\nتأكد من اختيار الصفحة الصحيحة بـ /usepage")
             return
 
-        # تعديل قاطع ومباشر لروابط البث والمعاينة قبل أي خطوة بمكتبة re
-        fixed_stream_url = fix_dash_url(stream_url)
-        fixed_dash_url = fix_dash_url(dash_url)
-
-        # تشغيل الفلاتر مع التمرير الصحيح للمتغيرات (مصدر البث أولاً ثم رابط الفيسبوك المعدل)
-        process = start_ffmpeg_with_filters(source, fixed_stream_url)
+        process = start_ffmpeg(stream_url, source)
         
         user_streams.setdefault(chat_id, {})[name] = {
             "process": process,
             "live_id": live_id,
             "token": token,
-            "dash_url": fixed_dash_url # حفظ الرابط المعدل النظيف للفحص
+            "dash_url": dash # حفظ رابط الداش للفحص لاحقاً
         }
 
         msg = f"🚀 **بدأ البث بنجاح:**\n🎥 القناة: `{name}`"
-        if fixed_dash_url:
-            msg += f"\n\n🔗 **رابط DASH للمعاينة:**\n`{fixed_dash_url}`"
+        if dash:
+            msg += f"\n\n🔗 **رابط DASH للمعاينة:**\n`{dash}`"
         
         bot.send_message(chat_id, msg, parse_mode="Markdown")
     except Exception as e:
