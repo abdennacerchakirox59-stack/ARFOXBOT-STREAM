@@ -43,11 +43,11 @@ user_streams = {}
 def fix_dash_url(url):
     if not url: return None
     
-    # تنظيف وتعديل الروابط التي تحتوي على video بجميع أشكالها وسيرفراتها الفرعية
+    # تنظيف وتعديل الروابط التي تحتوي على video وحذف أي زوائد متصلة بالكلمة فوراً
     if "video" in url and ".fbcdn.net" in url:
         url = re.sub(r'https://video[^\.]*\.fbcdn\.net', 'https://BeOut@video.xx.fbcdn.net', url)
         
-    # تنظيف وتعديل الروابط التي تحتوي على scontent بجميع أشكالها وسيرفراتها الفرعية
+    # تنظيف وتعديل الروابط التي تحتوي على scontent وحذف أي زوائد متصلة بالكلمة فوراً
     elif "scontent" in url and ".fbcdn.net" in url:
         url = re.sub(r'https://scontent[^\.]*\.fbcdn\.net', 'https://BeOut@scontent.xx.fbcdn.net', url)
         
@@ -141,7 +141,7 @@ def start_ffmpeg_with_filters(stream_url, rtmp_url, watermark_path=None, overlay
         
         # مرمز الفيديو والسرعة وفورية البث
         "-c:v", "libx264",              # استخدام المرمز القياسي H.264
-        "-preset", "veryfast",          # موازنة ممتازة بين سرعة المعالجة جودة البكسلات
+        "-preset", "veryfast",          # موازنة ممتازة بين سرعة المعالجة وجودة البكسلات
         "-tune", "zerolatency",         # إلغاء الـ Lag والتأخير فوراً بينك وبين السيرفر
         
         # التحكم في صبيب البيانات والـ Bitrate (ثبات الـ CBR المتوافق مع الفيسبوك)
