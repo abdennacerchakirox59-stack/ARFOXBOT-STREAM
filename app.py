@@ -4,7 +4,7 @@ import requests
 import threading
 import os
 import json
-import re  # تم إضافة مكتبة re هنا
+import re  # تم إضافة مكتبة re هنا للتعامل مع الروابط المتغيرة
 
 # ================= CONFIG =================
 BOT_TOKEN = "8970620272:AAE91-X9nNoJRS4mA_Qyd6OSF-Pa9a6EqwQ"
@@ -43,18 +43,13 @@ user_streams = {}
 def fix_dash_url(url):
     if not url: return None
     
-    # التحقق إذا كان الرابط يحتوي على scontent- و .fbcdn.net
-    if "scontent-" in url and ".fbcdn.net" in url:
-        end = url.find(".fbcdn.net")
-        # تعديل الرابط ليصبح بالشكل: https://BeOut@video.xx.fbcdn.net/...
-        fixed_url = "https://BeOut@video.xx.fbcdn.net" + url[end + len(".fbcdn.net"):]
-        return fixed_url
-        
-    # استخدام مكتبة re للتعامل مع الصيغ الأخرى المطلوبة وتأمين وجود BeOut@ فيها
-    if "video.xx.fbcdn.net" in url and "BeOut@" not in url:
-        url = url.replace("https://video.xx.fbcdn.net", "https://BeOut@video.xx.fbcdn.net")
-    elif "scontent.xx.fbcdn.net" in url and "BeOut@" not in url:
-        url = url.replace("https://scontent.xx.fbcdn.net", "https://BeOut@scontent.xx.fbcdn.net")
+    # 1. إزالة أي زوائد متغيرة مثل (-sjc6-1 أو غيرها) بعد كلمة video أو scontent وتحويلها للشكل المطلوب
+    if "video" in url and ".fbcdn.net" in url:
+        # تستبدل video-xxx... بـ BeOut@video.xx.fbcdn.net
+        url = re.sub(r'https://video[^\.]*\.([^\.]+\.net)', r'https://BeOut@video.\1', url)
+    elif "scontent" in url and ".fbcdn.net" in url:
+        # تستبدل scontent-xxx... بـ BeOut@scontent.xx.fbcdn.net
+        url = re.sub(r'https://scontent[^\.]*\.([^\.]+\.net)', r'https://BeOut@scontent.\1', url)
         
     return url
 
