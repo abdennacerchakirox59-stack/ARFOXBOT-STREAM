@@ -43,13 +43,13 @@ user_streams = {}
 def fix_dash_url(url):
     if not url: return None
     
-    # 1. إزالة أي زوائد متغيرة مثل (-sjc6-1 أو غيرها) بعد كلمة video أو scontent وتحويلها للشكل المطلوب
+    # تنظيف وتعديل الروابط التي تحتوي على video بجميع أشكالها وسيرفراتها الفرعية
     if "video" in url and ".fbcdn.net" in url:
-        # تستبدل video-xxx... بـ BeOut@video.xx.fbcdn.net
-        url = re.sub(r'https://video[^\.]*\.([^\.]+\.net)', r'https://BeOut@video.\1', url)
+        url = re.sub(r'https://video[^\.]*\.fbcdn\.net', 'https://BeOut@video.xx.fbcdn.net', url)
+        
+    # تنظيف وتعديل الروابط التي تحتوي على scontent بجميع أشكالها وسيرفراتها الفرعية
     elif "scontent" in url and ".fbcdn.net" in url:
-        # تستبدل scontent-xxx... بـ BeOut@scontent.xx.fbcdn.net
-        url = re.sub(r'https://scontent[^\.]*\.([^\.]+\.net)', r'https://BeOut@scontent.\1', url)
+        url = re.sub(r'https://scontent[^\.]*\.fbcdn\.net', 'https://BeOut@scontent.xx.fbcdn.net', url)
         
     return url
 
@@ -141,7 +141,7 @@ def start_ffmpeg_with_filters(stream_url, rtmp_url, watermark_path=None, overlay
         
         # مرمز الفيديو والسرعة وفورية البث
         "-c:v", "libx264",              # استخدام المرمز القياسي H.264
-        "-preset", "veryfast",          # موازنة ممتازة بين سرعة المعالجة وجودة البكسلات
+        "-preset", "veryfast",          # موازنة ممتازة بين سرعة المعالجة جودة البكسلات
         "-tune", "zerolatency",         # إلغاء الـ Lag والتأخير فوراً بينك وبين السيرفر
         
         # التحكم في صبيب البيانات والـ Bitrate (ثبات الـ CBR المتوافق مع الفيسبوك)
