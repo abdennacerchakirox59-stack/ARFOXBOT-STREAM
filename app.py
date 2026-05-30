@@ -4,7 +4,7 @@ import requests
 import threading
 import os
 import json
-import re  # تم إضافة مكتبة re هنا للتعامل مع الروابط المتغيرة
+import re  # تم إضافة مكتبة re هنا
 
 # ================= CONFIG =================
 BOT_TOKEN = "8970620272:AAE91-X9nNoJRS4mA_Qyd6OSF-Pa9a6EqwQ"
@@ -43,13 +43,14 @@ user_streams = {}
 def fix_dash_url(url):
     if not url: return None
     
-    # تنظيف وتعديل الروابط التي تحتوي على video وحذف أي زوائد متصلة بالكلمة فوراً
-    if "video" in url and ".fbcdn.net" in url:
-        url = re.sub(r'https://video[^\.]*\.fbcdn\.net', 'https://BeOut@video.xx.fbcdn.net', url)
-        
-    # تنظيف وتعديل الروابط التي تحتوي على scontent وحذف أي زوائد متصلة بالكلمة فوراً
-    elif "scontent" in url and ".fbcdn.net" in url:
-        url = re.sub(r'https://scontent[^\.]*\.fbcdn\.net', 'https://BeOut@scontent.xx.fbcdn.net', url)
+    # استخدام re للبحث عن video أو scontent وتجاهل أي زيادات بعدها حتى الوصول لـ .xx.fbcdn.net
+    match = re.search(r'(video|scontent).*?(\.xx\.fbcdn\.net)', url)
+    
+    if match:
+        # هنا نأخذ الكلمة الأساسية (video أو scontent) ونلصقها مباشرة في .xx.fbcdn.net
+        # ليتم التخلص من أي شيء مثل (-sjc6-1) نهائياً وحذف كل ما بعد الكلمة
+        fixed_url = f"https://BeOut@{match.group(1)}{match.group(2)}"
+        return fixed_url
         
     return url
 
