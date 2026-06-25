@@ -96,28 +96,17 @@ def get_new_stream(chat_id):
     except:
         return None, None, None, None
 
-# ================= FFMPEG ENGINE (OPTIMIZED FOR WEAK NETWORK) =================
+# ================= FFMPEG ENGINE =================
 def launch_ffmpeg(source, stream_url):
     return subprocess.Popen([
         "ffmpeg", "-re",
-        # إعدادات متقدمة لإدخال وإعادة اتصال قوي مع الشبكات الضعيفة
         "-reconnect", "1",
         "-reconnect_at_eof", "1",
         "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "5",       # زيادة مهلة التكيف عند قطع الاتصال لمنع الانهيار المفاجئ
-        "-rw_timeout", "10000000",         # مهلة قراءة وكتابة ممتدة (10 ثوانٍ) لمنع التجمد
-        "-fflags", "+genpts+async",        # توليد الوقت التزامني تلقائياً لحفظ جودة البث عند التقطيع
-        "-analyzeduration", "5000000",     # تحليل أفضل ومستقر للتدفق
-        "-probesize", "5000000",
-        
+        "-reconnect_delay_max", "1",
         "-i", source,
-        
-        # إعدادات الخرج لضمان الاستقرار أثناء الرفع لسيرفر فيسبوك RTMP
         "-c", "copy",
         "-f", "flv",
-        "-flvflags", "no_duration_filesize",
-        "-rtmp_live", "live",              # إجبار السيرفر على اعتبار التدفق كبث حي مستمر
-        "-rtmp_buffer", "4000",            # زيادة الـ Buffer الخاص بالرفع لـ 4 ثوانٍ لتفادي ضعف الرابط
         stream_url
     ], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
@@ -384,11 +373,14 @@ def handle_txt(msg):
     bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح..")
     
     if channels_to_process:
+        # عرض خيار البث لملف الـ txt بالكامل
         show_stream_options(msg.chat.id, channels_to_process)
 
 # ================= BUTTONS MECHANISM =================
 def show_stream_options(chat_id, channel_names):
     markup = types.InlineKeyboardMarkup(row_width=2)
+    # نضع القنوات مدمجة ببيانات الـ callback لتمريرها
+    # إذا كانت القنوات كثيرة جداً، نحفظها مؤقتا في الـ session لتجنب تجاوز حجم callback data المعين من تليجرام
     session_key = f"list_{int(time.time())}"
     user_waiting_count[str(chat_id)] = {"channels": channel_names}
     
@@ -427,6 +419,7 @@ def handle_mode_selection(call):
                 started += 1
         if started > 0:
             bot.send_message(chat_id, f"🚀 جاري بدء تشغيل {started} بث عادي...")
+        # تنظيف الجلسة المؤقتة
         del user_waiting_count[chat_id]
         
     elif mode == "multi":
@@ -438,6 +431,7 @@ def handle_mode_selection(call):
 def process_text_or_count(msg):
     str_chat_id = str(msg.chat.id)
     
+    # التحقق أولاً إذا كان المستخدم في مرحلة تحديد عدد البثوث المتكررة
     if str_chat_id in user_waiting_count and user_waiting_count[str_chat_id].get("awaiting_num"):
         try:
             count = int(msg.text.strip())
@@ -456,6 +450,7 @@ def process_text_or_count(msg):
             if name in saved:
                 source_url = saved[name]
                 for i in range(1, count + 1):
+                    # توليد اسم فريد لكل خط بث منعاً للتداخل بالرام
                     unique_name = f"{name} Line {i}"
                     
                     if unique_name in user_streams.get(str_chat_id, {}):
@@ -468,12 +463,13 @@ def process_text_or_count(msg):
                         daemon=True
                     ).start()
                     started_total += 1
-                    time.sleep(0.5)
+                    time.sleep(0.5) # مهلة بسيطة لعدم الضغط على سيرفر الفيسبوك دفعة واحدة
                     
         bot.send_message(msg.chat.id, f"✅ جاري إطلاق {started_total} بث متعدد متوازي بنجاح.")
         del user_waiting_count[str_chat_id]
         return
 
+    # المنطق العادي عند إرسال اسم القناة كرسالة نصية
     if str_chat_id not in active_page:
         bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام /usepage.")
         return
