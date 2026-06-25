@@ -1,4 +1,5 @@
 import telebot
+from telebot import types
 import subprocess
 import time
 import requests
@@ -6,6 +7,7 @@ import threading
 import json
 import os
 import re
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ================= CONFIG =================
 BOT_TOKEN = "8935584921:AAGMjeS6CsBw0hXIf0Rbu9nbQbY3n1hfw4k"
@@ -31,29 +33,34 @@ def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+# تحميل البيانات عند الإقلاع
 data_store = load_data()
 user_pages = data_store.get("pages", {})
 user_m3u8 = data_store.get("channels", {})
 
+# متغيرات الجلسة المؤقتة
 active_page = {}
 user_streams = {}
+user_waiting_count = {} # لتخزين بيانات القنوات التي تنتظر تحديد عدد التكرار
 
-# ================= DIRECT FACEBOOK ZERO REWRITER =================
-def rewrite_to_facebook_zero(url):
-    """
-    تحوير رابط الـ DASH الرسمي القادم من فيسبوك مباشرة
-    ليتم تمريره عبر نطاقات الـ Zero المفتوحة مجاناً بدون رصيد
-    """
+# ================= REGEX DASH FIX WITH FREE FACEBOOK DOMAIN =================
+def fix_dash_url(url):
     if not url:
         return None
     
-    # البحث عن نطاقات الميديا الرسمية لفيسبوك وتشويهها بنطاق الـ Zero المفتوح بالمغرب
-    # يتم دمج الـ Host المجاني لخدعة الفلترة مع الحفاظ على مسار وجلسة البث الحقيقية لفيسبوك
-    match = re.search(r"https://([^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net)/", url)
-    if match:
-        # استبدال النطاق بنطاق فيسبوك زيرو الأساسي مع الحفاظ على التوجيه المستهدف للـ CDN
-        replacement = "https://free.facebook.com.video.xx.fbcdn.net/"
-        return re.sub(r"https://[^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net/", replacement, url)
+    # استخراج المسار الكامل بعد النطاق (الـ Path والـ Query)
+    match_path = re.search(r"https://[^/]+(/.*)", url)
+    match_domain = re.search(r"https://([^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net)/", url)
+    
+    if match_path and match_domain:
+        original_domain = match_domain.group(1)
+        path_and_query = match_path.group(1)
+        
+        # تحويل الرابط ليستخدم دومين الفيسبوك المجاني كـ SNI/Host رئيسي
+        # مع تمرير الدومين الأصلي في البارامترات أو الحفاظ على بنية التخطي
+        fixed_url = f"https://free.facebook.com{path_and_query}"
+        return fixed_url
+        
     return url
 
 # ================= FACEBOOK GRAPH API =================
@@ -70,8 +77,8 @@ def get_new_stream(chat_id):
             params={
                 "access_token": page["token"],
                 "status": "UNPUBLISHED",
-                "title": "Zero Direct Live",
-                "description": "Pure FB Zero Pass"
+                "title": "Live Preview",
+                "description": "Preview stream"
             },
             timeout=10
         ).json()
@@ -89,9 +96,7 @@ def get_new_stream(chat_id):
             timeout=10
         ).json()
 
-        # جلب الرابط الرسمي وتحويره فوراً للـ Zero
-        zero_dash = rewrite_to_facebook_zero(info.get("dash_preview_url"))
-        return info.get("stream_url"), live_id, zero_dash, page["token"]
+        return info.get("stream_url"), live_id, fix_dash_url(info.get("dash_preview_url")), page["token"]
     except:
         return None, None, None, None
 
@@ -113,7 +118,7 @@ def launch_ffmpeg(source, stream_url):
 def stream_thread(chat_id, source, name):
     stream_url, live_id, dash, token = get_new_stream(chat_id)
     if not stream_url:
-        bot.send_message(chat_id, "❌ فشل إنشاء البث المباشر.")
+        bot.send_message(chat_id, f"❌ فشل إنشاء البث للقناة {name}.")
         return
 
     user_streams.setdefault(chat_id, {})[name] = {
@@ -125,20 +130,19 @@ def stream_thread(chat_id, source, name):
         "dash_url": dash  
     }
 
-    # وظيفة لتحديث الرابط بعد ثوانٍ من استقرار البث على سيرفرات فيسبوك
     def send_dash_later():
-        time.sleep(15)
+        time.sleep(20)
         try:
             info = requests.get(
                 f"https://graph.facebook.com/v17.0/{live_id}",
                 params={"access_token": token, "fields": "dash_preview_url"},
                 timeout=10
             ).json()
-            fresh_zero_dash = rewrite_to_facebook_zero(info.get("dash_preview_url"))
-            if fresh_zero_dash:
+            fresh = fix_dash_url(info.get("dash_preview_url"))
+            if fresh:
                 if chat_id in user_streams and name in user_streams[chat_id]:
-                    user_streams[chat_id][name]["dash_url"] = fresh_zero_dash  
-                bot.send_message(chat_id, f"🎥 القناة: {name}\n🚀 رابط DASH المباشر للـ Zero:\n`{fresh_zero_dash}`", parse_mode="Markdown")
+                    user_streams[chat_id][name]["dash_url"] = fresh  
+                bot.send_message(chat_id, f"🎥 {name}\n👁️ DASH (Free FB Method):\n{fresh}")
         except:
             pass
 
@@ -150,8 +154,13 @@ def stream_thread(chat_id, source, name):
         if proc is None or proc.poll() is not None:
             proc = launch_ffmpeg(source, stream_url)
             user_streams[chat_id][name]["proc"] = proc
+
+        if proc.poll() is not None:
+            time.sleep(0.33)
+            proc = launch_ffmpeg(source, stream_url)
+            user_streams[chat_id][name]["proc"] = proc
             
-        time.sleep(1)
+        time.sleep(0.33)
 
     proc = user_streams.get(chat_id, {}).get(name, {}).get("proc")
     if proc:
@@ -249,16 +258,226 @@ def stop_all(msg):
     
     bot.send_message(msg.chat.id, "🛑 تم تنظيف الرام وإيقاف جميع العمليات..")
 
+@bot.message_handler(commands=["check"])
+def check_tokens(msg):
+    str_chat_id = str(msg.chat.id)
+    pages = user_pages.get(str_chat_id, {})
+    if not pages:
+        bot.send_message(msg.chat.id, "❌ لا توجد صفحات مسجلة لفحصها.")
+        return
+    
+    report = "📋 تقرير فحص التوكنات:\n"
+    for name, info in pages.items():
+        try:
+            r = requests.get(
+                f"https://graph.facebook.com/v17.0/{info['page_id']}",
+                params={"access_token": info["token"], "fields": "name"},
+                timeout=10
+            )
+            if r.status_code == 200:
+                report += f"✅ {name}: هذا التوكن شغال\n"
+            else:
+                report += f"❌ {name}: هذا التوكن غير صالح\n"
+        except:
+            report += f"❌ {name}: هذا التوكن غير صالح\n"
+            
+    bot.send_message(msg.chat.id, report)
+
+@bot.message_handler(commands=["testall"])
+def test_all_dash(msg):
+    str_chat_id = str(msg.chat.id)
+    streams = user_streams.get(str_chat_id, {})
+    
+    if not streams or len(streams) == 0:
+        bot.send_message(msg.chat.id, "❌ لا توجد قنوات تبث حالياً لفحصها.")
+        return
+    
+    report = "🧪 **فحص روابط DASH للبثوث النشطة:**\n\n"
+    
+    for name, info in streams.items():
+        dash_url = info.get("dash_url")
+        
+        if not dash_url:
+            report += f"⚪️ **{name}**: لا يوجد رابط DASH لهذا البث.\n"
+            continue
+            
+        try:
+            # عند فحص الرابط المعدل، نحقن الهيدرات المناسبة لمحاكاة الطلب الحقيقي
+            headers = {
+                "Host": "free.facebook.com",
+                "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
+            }
+            res = requests.get(dash_url, headers=headers, timeout=10)
+            if res.status_code == 200 or res.status_code == 302:
+                report += f"✅ **{name}**: رابط DASH يعمل بنجاح.\n"
+            else:
+                report += f"❌ **{name}**: رابط DASH لا يعمل (Error {res.status_code}).\n"
+        except:
+            report += f"❌ **{name}**: رابط DASH متعطل (خطأ اتصال).\n"
+            
+    bot.send_message(msg.chat.id, report, parse_mode="Markdown")
+
+@bot.message_handler(commands=["testm3u8"])
+def test_m3u8_channels(msg):
+    str_chat_id = str(msg.chat.id)
+    channels = user_m3u8.get(str_chat_id, {})
+    if not channels:
+        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة..")
+        return
+    
+    status_msg = bot.send_message(msg.chat.id, "⏳ جاري فحص الروابط المحفوظة...")
+    report = "🧪 تقرير فحص القنوات المحفوظة:\n"
+    
+    for name, url in channels.items():
+        if ".m3u8" in url.lower():
+            link_type = "M3U8"
+        elif ".mpd" in url.lower():
+            link_type = "MPD"
+        else:
+            link_type = "URL"
+            
+        try:
+            res = requests.head(url, timeout=5, allow_redirects=True)
+            if res.status_code >= 200 and res.status_code < 400:
+                status = "شغال ✅"
+            else:
+                status = f"خطأ ({res.status_code}) ❌"
+        except:
+            status = "غير مستجيب ❌"
+            
+        report += f"- {name} ({link_type}) -> {status}\n"
+        
+    bot.edit_message_text(report, chat_id=msg.chat.id, message_id=status_msg.message_id)
+
+# ================= TXT IMPORT =================
+@bot.message_handler(content_types=["document"])
+def handle_txt(msg):
+    if not msg.document.file_name.lower().endswith(".txt"):
+        return
+    
+    file_info = bot.get_file(msg.document.file_id)
+    file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+    content = requests.get(file_url).text
+    
+    str_chat_id = str(msg.chat.id)
+    user_m3u8.setdefault(str_chat_id, {})
+    
+    channels_to_process = []
+    count = 0
+    
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            name, url = line.split(maxsplit=1)
+            if url.startswith("http"):
+                user_m3u8[str_chat_id][name] = url
+                channels_to_process.append(name)
+                count += 1
+        except:
+            pass
+            
+    save_data()
+    bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح..")
+    
+    if channels_to_process:
+        show_stream_options(msg.chat.id, channels_to_process)
+
+# ================= BUTTONS MECHANISM =================
+def show_stream_options(chat_id, channel_names):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    session_key = f"list_{int(time.time())}"
+    user_waiting_count[str(chat_id)] = {"channels": channel_names}
+    
+    btn_normal = types.InlineKeyboardButton("▶️ بث عادي (مفرد)", callback_data=f"mode_single_{session_key}")
+    btn_multi = types.InlineKeyboardButton("🔀 بث متعدد (تكرار)", callback_data=f"mode_multi_{session_key}")
+    markup.add(btn_normal, btn_multi)
+    
+    channels_str = ", ".join(channel_names)
+    bot.send_message(chat_id, f"📋 تم اختيار القنوات: \n◀️ {channels_str}\n\nاختر نوع البث المطلوب:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("mode_"))
+def handle_mode_selection(call):
+    chat_id = str(call.message.chat.id)
+    data_split = call.data.split("_")
+    mode = data_split[1]
+    
+    if chat_id not in user_waiting_count or "channels" not in user_waiting_count[chat_id]:
+        bot.send_message(chat_id, "❌ حدث خطأ في الجلسة، يرجى إعادة إرسال القناة.")
+        return
+        
+    channels = user_waiting_count[chat_id]["channels"]
+    saved = user_m3u8.get(chat_id, {})
+    
+    if mode == "single":
+        started = 0
+        for name in channels:
+            if name in saved:
+                if name in user_streams.get(chat_id, {}):
+                    bot.send_message(chat_id, f"⚠️ البث '{name}' قيد التشغيل بالفعل.")
+                    continue
+                threading.Thread(
+                    target=stream_thread,
+                    args=(chat_id, saved[name], name),
+                    daemon=True
+                ).start()
+                started += 1
+        if started > 0:
+            bot.send_message(chat_id, f"🚀 جاري بدء تشغيل {started} بث عادي...")
+        del user_waiting_count[chat_id]
+        
+    elif mode == "multi":
+        user_waiting_count[chat_id]["awaiting_num"] = True
+        bot.send_message(chat_id, f"🔢 كم من بث تريد في كل قناة؟ \n(أرسل رقم فقط، مثال: 5)")
+
 # ================= TEXT MESSAGE GENERAL RECEIVER =================
 @bot.message_handler(func=lambda m: True)
-def start_by_name(msg):
+def process_text_or_count(msg):
     str_chat_id = str(msg.chat.id)
+    
+    if str_chat_id in user_waiting_count and user_waiting_count[str_chat_id].get("awaiting_num"):
+        try:
+            count = int(msg.text.strip())
+            if count <= 0:
+                bot.send_message(msg.chat.id, "⚠️ الرجاء إدخال رقم أكبر من الصفر.")
+                return
+        except ValueError:
+            bot.send_message(msg.chat.id, "⚠️ الرجاء إرسال رقم صحيح فقط.")
+            return
+            
+        channels = user_waiting_count[str_chat_id]["channels"]
+        saved = user_m3u8.get(str_chat_id, {})
+        started_total = 0
+        
+        for name in channels:
+            if name in saved:
+                source_url = saved[name]
+                for i in range(1, count + 1):
+                    unique_name = f"{name} Line {i}"
+                    
+                    if unique_name in user_streams.get(str_chat_id, {}):
+                        bot.send_message(msg.chat.id, f"⚠️ البث '{unique_name}' قيد التشغيل بالفعل.")
+                        continue
+                        
+                    threading.Thread(
+                        target=stream_thread,
+                        args=(str_chat_id, source_url, unique_name),
+                        daemon=True
+                    ).start()
+                    started_total += 1
+                    time.sleep(0.5)
+                    
+        bot.send_message(msg.chat.id, f"✅ جاري إطلاق {started_total} بث متعدد متوازي بنجاح.")
+        del user_waiting_count[str_chat_id]
+        return
+
     if str_chat_id not in active_page:
         bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام /usepage.")
         return
 
     saved = user_m3u8.get(str_chat_id, {})
-    started = 0
+    detected_channels = []
     not_found = False
 
     for name in msg.text.splitlines():
@@ -266,24 +485,32 @@ def start_by_name(msg):
         if not name:
             continue
         if name in saved:
-            if name in user_streams.get(str_chat_id, {}):
-                bot.send_message(msg.chat.id, f"⚠️ البث '{name}' قيد التشغيل بالفعل.")
-                continue
-            threading.Thread(
-                target=stream_thread,
-                args=(str_chat_id, saved[name], name),
-                daemon=True
-            ).start()
-            started += 1
+            detected_channels.append(name)
         else:
             not_found = True
 
-    if started == 0 and not_found:
+    if detected_channels:
+        show_stream_options(msg.chat.id, detected_channels)
+    elif not_found:
         bot.send_message(msg.chat.id, "❌ لم يتم العثور على اسم قناة مطابق.")
+
+# ================= KEEP-ALIVE SERVER (FOR FREE HOSTING) =================
+class RequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is active and running!")
+        
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), RequestHandler)
+    server.serve_forever()
 
 # ================= RUN =================
 if __name__ == "__main__":
-    print("🎬 Bot BeOut Pure Zero (No Proxy) is running ...")
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    print("🎬 Bot BeOut is running ...")
     try:
         bot.infinity_polling(timeout=10, long_polling_timeout=5)
     except Exception as e:
