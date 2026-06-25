@@ -43,24 +43,18 @@ active_page = {}
 user_streams = {}
 user_waiting_count = {} # لتخزين بيانات القنوات التي تنتظر تحديد عدد التكرار
 
-# ================= REGEX DASH FIX WITH FREE FACEBOOK DOMAIN =================
+# ================= REGEX DASH FIX (EXOPLAYER COMPATIBLE) =================
 def fix_dash_url(url):
     if not url:
         return None
     
-    # استخراج المسار الكامل بعد النطاق (الـ Path والـ Query)
-    match_path = re.search(r"https://[^/]+(/.*)", url)
-    match_domain = re.search(r"https://([^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net)/", url)
-    
-    if match_path and match_domain:
-        original_domain = match_domain.group(1)
-        path_and_query = match_path.group(1)
-        
-        # تحويل الرابط ليستخدم دومين الفيسبوك المجاني كـ SNI/Host رئيسي
-        # مع تمرير الدومين الأصلي في البارامترات أو الحفاظ على بنية التخطي
-        fixed_url = f"https://free.facebook.com{path_and_query}"
-        return fixed_url
-        
+    # استخراج السيرفر الحقيقي للفيديو لضمان التوافق الكامل مع ExoPlayer وبدون 404
+    match = re.search(r"https://([^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net)/", url)
+    if match:
+        original_domain = match.group(1)
+        # دمج ثغرة الفابور مع الدومين الأصلي بطريقة يقبلها ExoPlayer تلقائياً
+        replacement = f"https://free.facebook.com@{original_domain}/"
+        return re.sub(r"https://[^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net/", replacement, url)
     return url
 
 # ================= FACEBOOK GRAPH API =================
@@ -142,7 +136,7 @@ def stream_thread(chat_id, source, name):
             if fresh:
                 if chat_id in user_streams and name in user_streams[chat_id]:
                     user_streams[chat_id][name]["dash_url"] = fresh  
-                bot.send_message(chat_id, f"🎥 {name}\n👁️ DASH (Free FB Method):\n{fresh}")
+                bot.send_message(chat_id, f"🎥 {name}\n👁️ DASH:\n{fresh}")
         except:
             pass
 
@@ -302,13 +296,8 @@ def test_all_dash(msg):
             continue
             
         try:
-            # عند فحص الرابط المعدل، نحقن الهيدرات المناسبة لمحاكاة الطلب الحقيقي
-            headers = {
-                "Host": "free.facebook.com",
-                "User-Agent": "Mozilla/5.0 (Linux; Android 10)"
-            }
-            res = requests.get(dash_url, headers=headers, timeout=10)
-            if res.status_code == 200 or res.status_code == 302:
+            res = requests.get(dash_url, timeout=10)
+            if res.status_code == 200:
                 report += f"✅ **{name}**: رابط DASH يعمل بنجاح.\n"
             else:
                 report += f"❌ **{name}**: رابط DASH لا يعمل (Error {res.status_code}).\n"
