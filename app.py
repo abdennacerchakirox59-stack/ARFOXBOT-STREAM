@@ -50,11 +50,13 @@ def get_main_keyboard():
     btn_test_m3u8 = types.KeyboardButton("📺 فحص القنوات المحفوظة")
     btn_check_tokens = types.KeyboardButton("🔑 التحقق من التوكنات")
     btn_list_m3u8 = types.KeyboardButton("📋 عرض القنوات المحفوظة")
+    btn_stop_all = types.KeyboardButton("🛑 إيقاف جميع البثوث")
     btn_del_channels = types.KeyboardButton("🗑️ حذف جميع القنوات")
     btn_del_tokens = types.KeyboardButton("🗑️ حذف جميع التوكنات")
     
     markup.add(btn_test_dash, btn_test_m3u8)
     markup.add(btn_check_tokens, btn_list_m3u8)
+    markup.add(btn_stop_all)
     markup.add(btn_del_channels, btn_del_tokens)
     return markup
 
@@ -345,7 +347,6 @@ def test_all_dash(msg):
                 
         report += f"《 {status_emoji} {name}\nㅤㅤㅤㅤㅤ🕑 Time : {time_str} 》\n"
         
-    report += "\n\n🟢 تعني رابط DASH شغال\n🔴 تعني رابط DASH غير شغال\n🟠 جاري إعادة تشغيل رابط DASH\n🕑 Time خاص ب مدة البث منذ بدأ الإطلاق"
     bot.send_message(msg.chat.id, report, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["testm3u8"])
@@ -481,6 +482,9 @@ def process_text_or_count(msg):
     elif text == "📋 عرض القنوات المحفوظة":
         m3u8_list(msg)
         return
+    elif text == "🛑 إيقاف جميع البثوث":
+        stop_all(msg)
+        return
     elif text == "🗑️ حذف جميع القنوات":
         user_m3u8[str_chat_id] = {}
         save_data()
@@ -497,7 +501,7 @@ def process_text_or_count(msg):
         try:
             count = int(text)
             if count <= 0:
-                bot.send_message(msg.chat.id, "⚠️ الرجاء إدخال رقم أكبر من الصفر.", reply_markup=get_main_keyboard())
+                bot.send_message(msg.chat.id, "⚠️ الرجاء إدخل رقم أكبر من الصفر.", reply_markup=get_main_keyboard())
                 return
         except ValueError:
             bot.send_message(msg.chat.id, "⚠️ الرجاء إرسال رقم صحيح فقط.", reply_markup=get_main_keyboard())
