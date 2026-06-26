@@ -43,6 +43,21 @@ active_page = {}
 user_streams = {}
 user_waiting_count = {} # لتخزين بيانات القنوات التي تنتظر تحديد عدد التكرار
 
+# ================= MAIN KEYBOARD BUTTONS =================
+def get_main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn_test_dash = types.KeyboardButton("📊 فحص الـ DASH")
+    btn_test_m3u8 = types.KeyboardButton("📺 فحص القنوات المحفوظة")
+    btn_check_tokens = types.KeyboardButton("🔑 التحقق من التوكنات")
+    btn_list_m3u8 = types.KeyboardButton("📋 عرض القنوات المحفوظة")
+    btn_del_channels = types.KeyboardButton("🗑️ حذف جميع القنوات")
+    btn_del_tokens = types.KeyboardButton("🗑️ حذف جميع التوكنات")
+    
+    markup.add(btn_test_dash, btn_test_m3u8)
+    markup.add(btn_check_tokens, btn_list_m3u8)
+    markup.add(btn_del_channels, btn_del_tokens)
+    return markup
+
 # ================= REGEX DASH FIX =================
 def fix_dash_url(url):
     if not url:
@@ -114,8 +129,11 @@ def launch_ffmpeg(source, stream_url):
 def stream_thread(chat_id, source, name):
     stream_url, live_id, dash, token = get_new_stream(chat_id)
     if not stream_url:
-        bot.send_message(chat_id, f"❌ فشل إنشاء البث للقناة {name}.")
+        bot.send_message(chat_id, f"❌ فشل إنشاء البث للقناة {name}.", reply_markup=get_main_keyboard())
         return
+
+    # حفظ وقت البداية لحساب المدة الزمنية المستغرقة للبث بدقة
+    start_time = time.time()
 
     user_streams.setdefault(chat_id, {})[name] = {
         "proc": None,
@@ -123,7 +141,9 @@ def stream_thread(chat_id, source, name):
         "token": token,
         "active": True,
         "source": source,
-        "dash_url": dash  
+        "dash_url": dash,
+        "start_time": start_time,
+        "restarting": False
     }
 
     def send_dash_later():
@@ -138,7 +158,7 @@ def stream_thread(chat_id, source, name):
             if fresh:
                 if chat_id in user_streams and name in user_streams[chat_id]:
                     user_streams[chat_id][name]["dash_url"] = fresh  
-                bot.send_message(chat_id, f"🎥 {name}\n👁️ DASH:\n{fresh}")
+                bot.send_message(chat_id, f"🎥 {name}\n👁️ DASH:\n{fresh}", reply_markup=get_main_keyboard())
         except:
             pass
 
@@ -148,13 +168,17 @@ def stream_thread(chat_id, source, name):
         proc = user_streams[chat_id][name].get("proc")
 
         if proc is None or proc.poll() is not None:
+            user_streams[chat_id][name]["restarting"] = True
             proc = launch_ffmpeg(source, stream_url)
             user_streams[chat_id][name]["proc"] = proc
+            user_streams[chat_id][name]["restarting"] = False
 
         if proc.poll() is not None:
             time.sleep(0.33)
+            user_streams[chat_id][name]["restarting"] = True
             proc = launch_ffmpeg(source, stream_url)
             user_streams[chat_id][name]["proc"] = proc
+            user_streams[chat_id][name]["restarting"] = False
             
         time.sleep(0.33)
 
@@ -184,20 +208,24 @@ def stop_stream(chat_id, name):
     if name in user_streams.get(chat_id, {}):
         del user_streams[chat_id][name]
 
-# ================= COMMANDS HANDLERS =================
+# ================= COMMANDS & BUTTONS HANDLERS =================
+
+@bot.message_handler(commands=["start"])
+def send_welcome(msg):
+    bot.send_message(msg.chat.id, "🎬 أهلاً بك في لوحة تحكم BeOut المحدثة. تم تفعيل أزرار التحكم السريعة بأسفل الشاشة.", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["addpage"])
 def add_page(msg):
     try:
         _, name, page_id, token = msg.text.split(maxsplit=3)
     except:
-        bot.send_message(msg.chat.id, "⚠️ الصيغة: /addpage الاسم ID التوكن")
+        bot.send_message(msg.chat.id, "⚠️ الصيغة: /addpage الاسم ID التوكن", reply_markup=get_main_keyboard())
         return
     
     str_chat_id = str(msg.chat.id)
     user_pages.setdefault(str_chat_id, {})[name] = {"page_id": page_id, "token": token}
     save_data()
-    bot.send_message(msg.chat.id, f"✅ تم إضافة الصفحة {name} بنجاح.")
+    bot.send_message(msg.chat.id, f"✅ تم إضافة الصفحة {name} بنجاح.", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["usepage"])
 def use_page(msg):
@@ -208,58 +236,58 @@ def use_page(msg):
     
     str_chat_id = str(msg.chat.id)
     if name not in user_pages.get(str_chat_id, {}):
-        bot.send_message(msg.chat.id, "❌ الصفحة غير موجودة")
+        bot.send_message(msg.chat.id, "❌ الصفحة غير موجودة", reply_markup=get_main_keyboard())
         return
     
     active_page[str_chat_id] = name
-    bot.send_message(msg.chat.id, f"🎯 الصفحة النشطة الآن: {name}")
+    bot.send_message(msg.chat.id, f"🎯 الصفحة النشطة الآن: {name}", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["savem3u8"])
 def save_m3u8(msg):
     try:
         _, name, url = msg.text.split(maxsplit=2)
     except:
-        bot.send_message(msg.chat.id, "⚠️ الصيغة: /savem3u8 الاسم الرابط")
+        bot.send_message(msg.chat.id, "⚠️ الصيغة: /savem3u8 الاسم الرابط", reply_markup=get_main_keyboard())
         return
     
     str_chat_id = str(msg.chat.id)
     user_m3u8.setdefault(str_chat_id, {})[name] = url
     save_data()
-    bot.send_message(msg.chat.id, f"💾 تم حفظ القناة: {name}")
+    bot.send_message(msg.chat.id, f"💾 تم حفظ القناة: {name}", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["m3u8list"])
 def m3u8_list(msg):
     str_chat_id = str(msg.chat.id)
     data = user_m3u8.get(str_chat_id)
     if not data or len(data) == 0:
-        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة..")
+        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة..", reply_markup=get_main_keyboard())
         return
     
     txt = "📺 القنوات المحفوظة:\n"
     for n in data:
         txt += f"- {n}\n"
-    bot.send_message(msg.chat.id, txt)
+    bot.send_message(msg.chat.id, txt, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["stopall"])
 def stop_all(msg):
     str_chat_id = str(msg.chat.id)
     streams = user_streams.get(str_chat_id)
     if not streams:
-        bot.send_message(msg.chat.id, "❌ لا توجد بثوث نشطة")
+        bot.send_message(msg.chat.id, "❌ لا توجد بثوث نشطة", reply_markup=get_main_keyboard())
         return
     
     for name in list(streams.keys()):
         stop_stream(str_chat_id, name)
-        bot.send_message(msg.chat.id, f"🛑 تم إيقاف: {name}")
+        bot.send_message(msg.chat.id, f"🛑 تم إيقاف: {name}", reply_markup=get_main_keyboard())
     
-    bot.send_message(msg.chat.id, "🛑 تم تنظيف الرام وإيقاف جميع العمليات..")
+    bot.send_message(msg.chat.id, "🛑 تم تنظيف الرام وإيقاف جميع العمليات..", reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["check"])
 def check_tokens(msg):
     str_chat_id = str(msg.chat.id)
     pages = user_pages.get(str_chat_id, {})
     if not pages:
-        bot.send_message(msg.chat.id, "❌ لا توجد صفحات مسجلة لفحصها.")
+        bot.send_message(msg.chat.id, "❌ لا توجد صفحات مسجلة لفحصها.", reply_markup=get_main_keyboard())
         return
     
     report = "📋 تقرير فحص التوكنات:\n"
@@ -277,7 +305,7 @@ def check_tokens(msg):
         except:
             report += f"❌ {name}: هذا التوكن غير صالح\n"
             
-    bot.send_message(msg.chat.id, report)
+    bot.send_message(msg.chat.id, report, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["testall"])
 def test_all_dash(msg):
@@ -285,39 +313,51 @@ def test_all_dash(msg):
     streams = user_streams.get(str_chat_id, {})
     
     if not streams or len(streams) == 0:
-        bot.send_message(msg.chat.id, "❌ لا توجد قنوات تبث حالياً لفحصها.")
+        bot.send_message(msg.chat.id, "❌ لا توجد قنوات تبث حالياً لفحصها.", reply_markup=get_main_keyboard())
         return
     
-    report = "🧪 **فحص روابط DASH للبثوث النشطة:**\n\n"
+    report = "🧪 فحص روابط DASH للبثوث النشطة:\n\n"
     
     for name, info in streams.items():
         dash_url = info.get("dash_url")
+        start_time = info.get("start_time", time.time())
         
-        if not dash_url:
-            report += f"⚪️ **{name}**: لا يوجد رابط DASH لهذا البث.\n"
-            continue
-            
-        try:
-            res = requests.get(dash_url, timeout=10)
-            if res.status_code == 200:
-                report += f"✅ **{name}**: رابط DASH يعمل بنجاح.\n"
-            else:
-                report += f"❌ **{name}**: رابط DASH لا يعمل (Error {res.status_code}).\n"
-        except:
-            report += f"❌ **{name}**: رابط DASH متعطل (خطأ اتصال).\n"
-            
-    bot.send_message(msg.chat.id, report, parse_mode="Markdown")
+        # حساب مدة البث بصيغة H:MM:SS
+        elapsed_seconds = int(time.time() - start_time)
+        hours, remainder = divmod(elapsed_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+        
+        # تحديد حالة البث بالألوان المطلوبة
+        if info.get("restarting", False):
+            status_emoji = "🟠" # جاري إعادة تشغيل رابط DASH
+        elif not dash_url:
+            status_emoji = "🔴"
+        else:
+            try:
+                res = requests.get(dash_url, timeout=5)
+                if res.status_code == 200:
+                    status_emoji = "🟢" # رابط DASH شغال
+                else:
+                    status_emoji = "🔴" # رابط DASH غير شغال
+            except:
+                status_emoji = "🔴"
+                
+        report += f"《 {status_emoji} {name}\nㅤㅤㅤㅤㅤ🕑 Time : {time_str} 》\n"
+        
+    report += "\n\n🟢 تعني رابط DASH شغال\n🔴 تعني رابط DASH غير شغال\n🟠 جاري إعادة تشغيل رابط DASH\n🕑 Time خاص ب مدة البث منذ بدأ الإطلاق"
+    bot.send_message(msg.chat.id, report, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=["testm3u8"])
 def test_m3u8_channels(msg):
     str_chat_id = str(msg.chat.id)
     channels = user_m3u8.get(str_chat_id, {})
     if not channels:
-        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة..")
+        bot.send_message(msg.chat.id, "❌ قائمة القنوات فارغة..", reply_markup=get_main_keyboard())
         return
     
     status_msg = bot.send_message(msg.chat.id, "⏳ جاري فحص الروابط المحفوظة...")
-    report = "🧪 تقرير فحص القنوات المحفوظة:\n"
+    report = "🧪 تقرير فحص القنوات المحفوظة:\n\n"
     
     for name, url in channels.items():
         if ".m3u8" in url.lower():
@@ -330,15 +370,15 @@ def test_m3u8_channels(msg):
         try:
             res = requests.head(url, timeout=5, allow_redirects=True)
             if res.status_code >= 200 and res.status_code < 400:
-                status = "شغال ✅"
+                status_emoji = "🟢 شغال ✅"
             else:
-                status = f"خطأ ({res.status_code}) ❌"
+                status_emoji = f"🔴 خطأ ({res.status_code}) ❌"
         except:
-            status = "غير مستجيب ❌"
+            status_emoji = "🔴 غير مستجيب ❌"
             
-        report += f"- {name} ({link_type}) -> {status}\n"
+        report += f"《 {status_emoji} {name} ({link_type}) 》\n"
         
-    bot.edit_message_text(report, chat_id=msg.chat.id, message_id=status_msg.message_id)
+    bot.edit_message_text(report, chat_id=msg.chat.id, message_id=status_msg.message_id, reply_markup=get_main_keyboard())
 
 # ================= TXT IMPORT =================
 @bot.message_handler(content_types=["document"])
@@ -370,17 +410,14 @@ def handle_txt(msg):
             pass
             
     save_data()
-    bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح..")
+    bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح..", reply_markup=get_main_keyboard())
     
     if channels_to_process:
-        # عرض خيار البث لملف الـ txt بالكامل
         show_stream_options(msg.chat.id, channels_to_process)
 
 # ================= BUTTONS MECHANISM =================
 def show_stream_options(chat_id, channel_names):
     markup = types.InlineKeyboardMarkup(row_width=2)
-    # نضع القنوات مدمجة ببيانات الـ callback لتمريرها
-    # إذا كانت القنوات كثيرة جداً، نحفظها مؤقتا في الـ session لتجنب تجاوز حجم callback data المعين من تليجرام
     session_key = f"list_{int(time.time())}"
     user_waiting_count[str(chat_id)] = {"channels": channel_names}
     
@@ -398,7 +435,7 @@ def handle_mode_selection(call):
     mode = data_split[1]
     
     if chat_id not in user_waiting_count or "channels" not in user_waiting_count[chat_id]:
-        bot.send_message(chat_id, "❌ حدث خطأ في الجلسة، يرجى إعادة إرسال القناة.")
+        bot.send_message(chat_id, "❌ حدث خطأ في الجلسة، يرجى إعادة إرسال القناة.", reply_markup=get_main_keyboard())
         return
         
     channels = user_waiting_count[chat_id]["channels"]
@@ -409,7 +446,7 @@ def handle_mode_selection(call):
         for name in channels:
             if name in saved:
                 if name in user_streams.get(chat_id, {}):
-                    bot.send_message(chat_id, f"⚠️ البث '{name}' قيد التشغيل بالفعل.")
+                    bot.send_message(chat_id, f"⚠️ البث '{name}' قيد التشغيل بالفعل.", reply_markup=get_main_keyboard())
                     continue
                 threading.Thread(
                     target=stream_thread,
@@ -418,28 +455,52 @@ def handle_mode_selection(call):
                 ).start()
                 started += 1
         if started > 0:
-            bot.send_message(chat_id, f"🚀 جاري بدء تشغيل {started} بث عادي...")
-        # تنظيف الجلسة المؤقتة
+            bot.send_message(chat_id, f"🚀 جاري بدء تشغيل {started} بث عادي...", reply_markup=get_main_keyboard())
         del user_waiting_count[chat_id]
         
     elif mode == "multi":
         user_waiting_count[chat_id]["awaiting_num"] = True
-        bot.send_message(chat_id, f"🔢 كم من بث تريد في كل قناة؟ \n(أرسل رقم فقط، مثال: 5)")
+        bot.send_message(chat_id, f"🔢 كم من بث تريد في كل قناة؟ \n(أرسل رقم فقط، مثال: 5)", reply_markup=get_main_keyboard())
 
 # ================= TEXT MESSAGE GENERAL RECEIVER =================
 @bot.message_handler(func=lambda m: True)
 def process_text_or_count(msg):
     str_chat_id = str(msg.chat.id)
+    text = msg.text.strip()
     
-    # التحقق أولاً إذا كان المستخدم في مرحلة تحديد عدد البثوث المتكررة
+    # التعامل مع أزرار لوحة المفاتيح السفلى أولاً
+    if text == "📊 فحص الـ DASH":
+        test_all_dash(msg)
+        return
+    elif text == "📺 فحص القنوات المحفوظة":
+        test_m3u8_channels(msg)
+        return
+    elif text == "🔑 التحقق من التوكنات":
+        check_tokens(msg)
+        return
+    elif text == "📋 عرض القنوات المحفوظة":
+        m3u8_list(msg)
+        return
+    elif text == "🗑️ حذف جميع القنوات":
+        user_m3u8[str_chat_id] = {}
+        save_data()
+        bot.send_message(msg.chat.id, "🗑️ تم حذف جميع القنوات المحفوظة من قاعدة البيانات بنجاح.", reply_markup=get_main_keyboard())
+        return
+    elif text == "🗑️ حذف جميع التوكنات":
+        user_pages[str_chat_id] = {}
+        save_data()
+        bot.send_message(msg.chat.id, "🗑️ تم حذف جميع الصفحات والتوكنات المحفوظة بنجاح.", reply_markup=get_main_keyboard())
+        return
+
+    # التحقق إذا كان المستخدم في مرحلة تحديد عدد البثوث المتكررة
     if str_chat_id in user_waiting_count and user_waiting_count[str_chat_id].get("awaiting_num"):
         try:
-            count = int(msg.text.strip())
+            count = int(text)
             if count <= 0:
-                bot.send_message(msg.chat.id, "⚠️ الرجاء إدخال رقم أكبر من الصفر.")
+                bot.send_message(msg.chat.id, "⚠️ الرجاء إدخال رقم أكبر من الصفر.", reply_markup=get_main_keyboard())
                 return
         except ValueError:
-            bot.send_message(msg.chat.id, "⚠️ الرجاء إرسال رقم صحيح فقط.")
+            bot.send_message(msg.chat.id, "⚠️ الرجاء إرسال رقم صحيح فقط.", reply_markup=get_main_keyboard())
             return
             
         channels = user_waiting_count[str_chat_id]["channels"]
@@ -450,11 +511,10 @@ def process_text_or_count(msg):
             if name in saved:
                 source_url = saved[name]
                 for i in range(1, count + 1):
-                    # توليد اسم فريد لكل خط بث منعاً للتداخل بالرام
                     unique_name = f"{name} Line {i}"
                     
                     if unique_name in user_streams.get(str_chat_id, {}):
-                        bot.send_message(msg.chat.id, f"⚠️ البث '{unique_name}' قيد التشغيل بالفعل.")
+                        bot.send_message(msg.chat.id, f"⚠️ البث '{unique_name}' قيد التشغيل بالفعل.", reply_markup=get_main_keyboard())
                         continue
                         
                     threading.Thread(
@@ -463,15 +523,14 @@ def process_text_or_count(msg):
                         daemon=True
                     ).start()
                     started_total += 1
-                    time.sleep(0.5) # مهلة بسيطة لعدم الضغط على سيرفر الفيسبوك دفعة واحدة
+                    time.sleep(0.5)
                     
-        bot.send_message(msg.chat.id, f"✅ جاري إطلاق {started_total} بث متعدد متوازي بنجاح.")
+        bot.send_message(msg.chat.id, f"✅ جاري إطلاق {started_total} بث متعدد متوازي بنجاح.", reply_markup=get_main_keyboard())
         del user_waiting_count[str_chat_id]
         return
 
-    # المنطق العادي عند إرسال اسم القناة كرسالة نصية
     if str_chat_id not in active_page:
-        bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام /usepage.")
+        bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام /usepage.", reply_markup=get_main_keyboard())
         return
 
     saved = user_m3u8.get(str_chat_id, {})
@@ -490,7 +549,7 @@ def process_text_or_count(msg):
     if detected_channels:
         show_stream_options(msg.chat.id, detected_channels)
     elif not_found:
-        bot.send_message(msg.chat.id, "❌ لم يتم العثور على اسم قناة مطابق.")
+        bot.send_message(msg.chat.id, "❌ لم يتم العثور على اسم قناة مطابق.", reply_markup=get_main_keyboard())
 
 # ================= KEEP-ALIVE SERVER (FOR FREE HOSTING) =================
 class RequestHandler(BaseHTTPRequestHandler):
