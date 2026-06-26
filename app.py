@@ -111,7 +111,7 @@ def launch_ffmpeg(source, stream_url):
     ], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
 # ================= STREAM THREAD =================
-def stream_thread(chat_id, source, name, is_multi=False):
+def stream_thread(chat_id, source, name):
     stream_url, live_id, dash, token = get_new_stream(chat_id)
     if not stream_url:
         bot.send_message(chat_id, f"❌ فشل إنشاء البث للقناة {name}.")
@@ -144,22 +144,8 @@ def stream_thread(chat_id, source, name, is_multi=False):
 
     threading.Thread(target=send_dash_later, daemon=True).start()
 
-    # تسجيل وقت البداية لإدارة مؤقت التجديد
-    start_time = time.time()
-
     while user_streams.get(chat_id, {}).get(name, {}).get("active", False):
         proc = user_streams[chat_id][name].get("proc")
-
-        # 🔄 ميزة التجديد التلقائي: تعمل فقط في البث العادي (not is_multi) وتم تعديل المدة إلى 4 ساعات (14400 ثانية)
-        if not is_multi and (time.time() - start_time > 14400): 
-            if proc: 
-                proc.kill()
-            stream_url, live_id, dash, token = get_new_stream(chat_id)
-            if stream_url:
-                user_streams[chat_id][name]["live_id"] = live_id
-                user_streams[chat_id][name]["dash_url"] = dash
-                start_time = time.time()
-                bot.send_message(chat_id, f"🔄 تم تجديد بث {name} تلقائياً لضمان استمرار الـ 24 ساعة.")
 
         if proc is None or proc.poll() is not None:
             proc = launch_ffmpeg(source, stream_url)
@@ -387,11 +373,14 @@ def handle_txt(msg):
     bot.send_message(msg.chat.id, f"💾 تم استيراد {count} قناة بنجاح..")
     
     if channels_to_process:
+        # عرض خيار البث لملف الـ txt بالكامل
         show_stream_options(msg.chat.id, channels_to_process)
 
 # ================= BUTTONS MECHANISM =================
 def show_stream_options(chat_id, channel_names):
     markup = types.InlineKeyboardMarkup(row_width=2)
+    # نضع القنوات مدمجة ببيانات الـ callback لتمريرها
+    # إذا كانت القنوات كثيرة جداً، نحفظها مؤقتا في الـ session لتجنب تجاوز حجم callback data المعين من تليجرام
     session_key = f"list_{int(time.time())}"
     user_waiting_count[str(chat_id)] = {"channels": channel_names}
     
@@ -424,12 +413,13 @@ def handle_mode_selection(call):
                     continue
                 threading.Thread(
                     target=stream_thread,
-                    args=(chat_id, saved[name], name, False), # False تعني بث مفرد عادي (يفعّل التجديد)
+                    args=(chat_id, saved[name], name),
                     daemon=True
                 ).start()
                 started += 1
         if started > 0:
             bot.send_message(chat_id, f"🚀 جاري بدء تشغيل {started} بث عادي...")
+        # تنظيف الجلسة المؤقتة
         del user_waiting_count[chat_id]
         
     elif mode == "multi":
@@ -441,6 +431,7 @@ def handle_mode_selection(call):
 def process_text_or_count(msg):
     str_chat_id = str(msg.chat.id)
     
+    # التحقق أولاً إذا كان المستخدم في مرحلة تحديد عدد البثوث المتكررة
     if str_chat_id in user_waiting_count and user_waiting_count[str_chat_id].get("awaiting_num"):
         try:
             count = int(msg.text.strip())
@@ -459,6 +450,7 @@ def process_text_or_count(msg):
             if name in saved:
                 source_url = saved[name]
                 for i in range(1, count + 1):
+                    # توليد اسم فريد لكل خط بث منعاً للتداخل بالرام
                     unique_name = f"{name} Line {i}"
                     
                     if unique_name in user_streams.get(str_chat_id, {}):
@@ -467,16 +459,17 @@ def process_text_or_count(msg):
                         
                     threading.Thread(
                         target=stream_thread,
-                        args=(str_chat_id, source_url, unique_name, True), # True تعني بث مكرر (يلغي التجديد التلقائي)
+                        args=(str_chat_id, source_url, unique_name),
                         daemon=True
                     ).start()
                     started_total += 1
-                    time.sleep(0.5)
+                    time.sleep(0.5) # مهلة بسيطة لعدم الضغط على سيرفر الفيسبوك دفعة واحدة
                     
         bot.send_message(msg.chat.id, f"✅ جاري إطلاق {started_total} بث متعدد متوازي بنجاح.")
         del user_waiting_count[str_chat_id]
         return
 
+    # المنطق العادي عند إرسال اسم القناة كرسالة نصية
     if str_chat_id not in active_page:
         bot.send_message(msg.chat.id, "⚠️ اختر صفحة أولاً باستخدام /usepage.")
         return
