@@ -60,7 +60,7 @@ def get_main_keyboard():
     markup.add(btn_del_channels, btn_del_tokens)
     return markup
 
-# توليد لوحة الأزرار الرقمية الإنلاين المتطابقة مع الصورة
+# توليد لوحة الأزرار الرقمية الإنلاين المتطابقة مع الصورة 1000214545_2.png
 def get_numeric_inline_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=5)
     row1 = [types.InlineKeyboardButton(str(i), callback_data=f"num_{i}") for i in range(1, 6)]
@@ -85,20 +85,24 @@ def fix_dash_url(url):
         return re.sub(r"https://[^/]*?(?:video|scontent)[^/]*?\.fbcdn\.net/", replacement, url)
     return url
 
-# استخراج الـ FB KEY من رابط الـ stream_url الكامل
+# دالة مخصصة لاستخراج الـ FB KEY الأصلي من الـ stream_url بدقة
 def extract_fb_key(stream_url):
     if not stream_url:
         return "غير متوفر"
-    # يبحث عن صيغة تبدأ بـ FB- وتنتهي قبل علامة الاستفهام أو نهاية الرابط
+    # البحث عن النمط الذي يبدأ بـ FB- ويستمر حتى نهاية الجزء الخاص بالمفتاح قبل المعاملات الإضافية
     match = re.search(r"(FB-[\w-]+)", stream_url)
     if match:
         return match.group(1)
-    # محاولة بديلة إذا كان الـ Key في نهاية الرابط مباشرة بعد rtmp
-    parts = stream_url.split('/')
-    if parts:
-        last_part = parts[-1]
-        if "FB-" in last_part:
-            return last_part.split('?')[0]
+    
+    # محاولة استخراج احتياطية في حال اختلف التقسيم
+    try:
+        parts = stream_url.split('/')
+        if parts:
+            last_part = parts[-1]
+            if "FB-" in last_part:
+                return last_part.split('?')[0]
+    except:
+        pass
     return "غير متوفر"
 
 # ================= FACEBOOK GRAPH API =================
@@ -160,7 +164,7 @@ def stream_thread(chat_id, source, name):
         return
 
     start_time = time.time()
-    # استخراج المفتاح الأصلي لحفظه وعرضه في الرسالة اللاحقة
+    # استخراج الـ FB KEY الأصلي عند بدء التشغيل
     fb_key_extracted = extract_fb_key(stream_url)
 
     user_streams.setdefault(chat_id, {})[name] = {
@@ -188,8 +192,8 @@ def stream_thread(chat_id, source, name):
                 if chat_id in user_streams and name in user_streams[chat_id]:
                     user_streams[chat_id][name]["dash_url"] = fresh  
                 
-                # الرسالة مضاف إليها الـ FB KEY بالشكل المطلوب تماماً
-                msg_text = f"🎥 {name}\n🔑 FB KEY:\n`{fb_key_extracted}`\n\n👁️ DASH:\n{fresh}"
+                # إرسال الرسالة محتوية على الـ FB KEY الأصلي المكتمل والـ DASH منسقين
+                msg_text = f"🎥 {name}\n\n🔑 FB KEY:\n`{fb_key_extracted}`\n\n👁️ DASH:\n{fresh}"
                 bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
         except:
             pass
@@ -202,6 +206,7 @@ def stream_thread(chat_id, source, name):
         if proc is None or proc.poll() is not None:
             user_streams[chat_id][name]["restarting"] = True
             
+            # تحديث الروابط والمفاتيح عند حدوث أي إعادة تشغيل تلقائية للبث
             new_stream_url, new_live_id, new_dash, _ = get_new_stream(chat_id)
             if new_stream_url:
                 stream_url = new_stream_url
